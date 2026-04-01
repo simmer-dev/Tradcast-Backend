@@ -1,5 +1,4 @@
-from game.data_preparation import random_token, spike_df_map
-from collections import deque
+from game.data_preparation import spike_df_map
 import asyncio
 
 
@@ -9,29 +8,21 @@ class FuturesWallet:
         self.position_size = 100.0
         self.token_selection = token_selection
 
-        self.capital = float(capital)  # starting capital (constant baseline)
+        self.capital = float(capital)
 
-        # balances:
-        self.balance_free = float(capital)  # cash not reserved as margin
-        self.balance_in_position = 0.0  # margin currently locked in positions
-        self.balance_total = float(capital)  # equity (free + in_position + unrealized PnL)
+        self.balance_free = float(capital)
+        self.balance_in_position = 0.0
+        self.balance_total = float(capital)
 
-        # position tracking
         self.long_positions = {'average_price': None, 'total_price': 0.0, 'num_pos': 0}
         self.short_positions = {'average_price': None, 'total_price': 0.0, 'num_pos': 0}
-        self.direction = None  # "long" or "short" or None when no position
+        self.direction = None
 
-        # async lock for concurrent access from websocket tasks
         self._lock = asyncio.Lock()
 
         self.long_queue = []
         self.short_queue = []
         self.close_pos_queue = []
-
-        def get_order_packet_send_time():
-            ...
-
-        self.binance_packet_sending_time = get_order_packet_send_time()
 
     # small helper to clear positions without touching balances
     async def _clear_positions(self):
@@ -201,5 +192,6 @@ class FuturesWallet:
 
 
 if __name__ == '__main__':
+    from game.data_preparation import random_token
     futures_wallet = FuturesWallet(leverage=20, token_selection=random_token)
 
