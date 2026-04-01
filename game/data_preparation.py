@@ -45,16 +45,8 @@ def load_parquet_klines(start_index: int = 0, debug: bool = False):
     return spike_df_map
 
 
-print(get_klines_dir())
-spike_df_map = load_parquet_klines(start_index=35, debug=True)
+spike_df_map = load_parquet_klines(start_index=35)
 random_token = random.choice(list(spike_df_map.keys()))
-print(spike_df_map)
-
-if __name__ == '__main__':
-    print(random_token, spike_df_map)
-
-
-# Example usage:
-# price_flow = PriceFlow(token_selection=random_token)
+print(f"Loaded {len(spike_df_map)} token datasets from {get_klines_dir()}")
 
 

@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 
 use_env_working_dir = False
-working_dir = "/root/miniapp_backend/game"
+working_dir = "/root/tradcast_backend/game"
 ENV_WORKING_DIR_KEY = "WORKING_DIR"
 
 # Decide working dir
@@ -17,9 +17,11 @@ BASE_DIR = (
 dotenv_path = os.path.join(BASE_DIR, ".env")
 load_dotenv(dotenv_path)
 
+SERVER_LOC = 'Turkey'
 # Read secret
 SECRET = os.getenv("SECRET")
-
+if not SECRET:
+    print("WARNING: SECRET not set in environment")
 
 def get_base_dir() -> str:
     """
@@ -61,8 +63,10 @@ WS_ALLOWED_ORIGINS = {
     'https://ws.simmerliq.com',
     "https://demoapp.prime-academy.online",
    'https://tradcastdev.prime-academy.online',
-   'https://tradcast.simmerliq.com'
-    }
+   'https://tradcast.simmerliq.com',
+    'https://api.tradcast.xyz',
+      'https://tradcast.xyz',
+   }
 
 
 # ✅ Allowed origins for HTTP
@@ -83,6 +87,8 @@ CORS_ALLOWED_ORIGINS = [
     "demoapp.prime-academy.online",
     'tradcastdev.prime-academy.online',
     'tradcast.simmerliq.com',
-    'ws.simmerliq.com'
+    'ws.simmerliq.com',
+    'api.tradcast.xyz',
+    'tradcast.xyz'
     ]
 
