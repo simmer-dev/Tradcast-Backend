@@ -4,86 +4,63 @@ from typing import List, Dict, Any
 
 
 class EnergyManager:
-    def __init__(self, firestore_manager):
-        """
-        Initialize Energy Manager
-        
-        Args:
-            firestore_manager: Instance of FirestoreManager
-        """
+    def __init__(self, firestore_manager, cache_only: bool = False):
         self.fm = firestore_manager
         self.max_energy = 10
         self.energy_increment = 1
-    
-    async def reenergize_user(self, fid: str) -> bool:
-        """
-        Re-energize a single user if energy < max_energy
-        
-        Args:
-            fid: User's FID
-            
-        Returns:
-            True if user was re-energized, False otherwise
-        """
+        self.cache_only = cache_only
+
+    async def reenergize_user(self, fid: str, current_energy: int = None) -> bool:
         try:
-            user = await self.fm.get_user(fid)
-            if not user:
-                return False
-            
-            current_energy = user.get("energy", 0)
-            
-            # Only re-energize if below max
+            if current_energy is None:
+                user = self.fm._users_cache.get(fid)
+                if not user:
+                    return False
+                current_energy = user.get("energy", 0)
+
             if current_energy < self.max_energy:
                 new_energy = min(current_energy + self.energy_increment, self.max_energy)
-                await self.fm.update_user(fid, {"energy": new_energy})
-                print(f"Re-energized {fid}: {current_energy} -> {new_energy}")
+                if self.cache_only:
+                    user = self.fm._users_cache.get(fid)
+                    if user is not None:
+                        user["energy"] = new_energy
+                else:
+                    await self.fm.update_user(fid, {"energy": new_energy})
                 return True
-            
+
             return False
-            
+
         except Exception as e:
             print(f"Error re-energizing user {fid}: {e}")
             return False
-    
+
     async def reenergize_all_users(self) -> Dict[str, Any]:
-        """
-        Re-energize all users who have energy < max_energy
-        
-        Returns:
-            Dictionary with stats about re-energization
-        """
         try:
-            # Query users with energy < max_energy
-            query = self.fm.db.collection(self.fm.users_collection).where(
-                "energy", "<", self.max_energy
-            )
-            docs = await query.get()
-            
+            to_reenergize = [
+                (fid, data.get("energy", 0))
+                for fid, data in self.fm._users_cache.items()
+                if data.get("energy", 0) < self.max_energy
+            ]
+
             stats = {
                 "timestamp": datetime.now().isoformat(),
-                "total_users_checked": len(docs),
+                "total_users_checked": len(to_reenergize),
                 "users_reenergized": 0,
-                "errors": 0
+                "errors": 0,
             }
-            
-            # Re-energize each user concurrently
-            tasks = []
-            for doc in docs:
-                fid = doc.id
-                tasks.append(self.reenergize_user(fid))
-            
+
+            tasks = [self.reenergize_user(fid, current_energy=e) for fid, e in to_reenergize]
             results = await asyncio.gather(*tasks, return_exceptions=True)
-            
-            # Count successes and errors
+
             for result in results:
                 if isinstance(result, Exception):
                     stats["errors"] += 1
                 elif result:
                     stats["users_reenergized"] += 1
-            
+
             print(f"Re-energization complete: {stats}")
             return stats
-            
+
         except Exception as e:
             print(f"Error in reenergize_all_users: {e}")
             return {"error": str(e)}
@@ -122,7 +99,8 @@ class EnergyManager:
         """
         Start infinite loop that re-energizes users at 0, 15, 30, and 45 minutes of each hour
         """
-        print("Starting re-energization loop (every quarter hour: :00, :15, :30, :45)...")
+        mode = "cache-only" if self.cache_only else "cache+firestore"
+        print(f"Starting re-energization loop [{mode}] (every quarter hour: :00, :15, :30, :45)...")
         
         while True:
             try:
@@ -147,23 +125,14 @@ class EnergyManager:
                 await asyncio.sleep(60)
 
 
-# Usage example
-async def main():
-
-    from firestore_client import FirestoreManager
-    
-    # Initialize managers
-    firestore_manager = FirestoreManager()
-    energy_manager = EnergyManager(firestore_manager)
-    
-    # Option 1: Run once
-    print("Running single re-energization cycle:")
-    #await energy_manager.reenergize_all_users()
-    
-    # Option 2: Start infinite loop (for production)
-    await energy_manager.start_reenergization_loop()
-
-
-# For running as a standalone script
 if __name__ == "__main__":
+    # from storage.firestore_client import FirestoreManager
+    from firestore_client import FirestoreManager
+
+    async def main():
+        fm = FirestoreManager()
+        em = EnergyManager(fm)
+        await em.start_reenergization_loop()
+
     asyncio.run(main())
+
