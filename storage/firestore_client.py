@@ -428,9 +428,10 @@ class FirestoreManager:
             if energy <= 0:
                 return False
 
-            new_energy = energy - 1
-            user["energy"] = new_energy
-            await self.db.collection(self.users_collection).document(fid).update({"energy": new_energy})
+            user["energy"] = energy - 1
+            await self.db.collection(self.users_collection).document(fid).update(
+                {"energy": firestore.Increment(-1)}
+            )
             return True
 
         except Exception as e:

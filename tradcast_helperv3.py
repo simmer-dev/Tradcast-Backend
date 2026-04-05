@@ -15,10 +15,10 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Bot settings - CHANGE THESE
-BOT_TOKEN = ""  # Token from @BotFather
+BOT_TOKEN = "7769512886:AAGI8AB9FU-T4egtx8ZT234nRRj3VmITdks"  # Token from @BotFather
 CHANNEL_ID = "@simmerliq"  # Channel ID or username (e.g. @TradCast or -1001234567890)
 
-ADMIN_IDS = []  # 👈 Your admin Telegram IDs here
+ADMIN_IDS = [1359422473, 6028383282]  # 👈 Your admin Telegram IDs here
 
 # ── Rate-limit config ──────────────────────────────────────────────────────
 MENU_RATE_LIMIT        = 3    # max times the menu can be triggered per user

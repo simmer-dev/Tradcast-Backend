@@ -2,9 +2,9 @@ import sys, os
 _dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_dir))
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from game.price_flow import PriceFlow, spike_df_map
 from game.wallet import FuturesWallet
 import json
@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from collections import deque, defaultdict
 from threading import Lock
 from utils.auth_utils import decrypt
+from utils.main_server_energy import sync_game_cache_energy_from_main
+from utils.cache_export import export_single_user, export_users_cache
 from configs.config import WS_ALLOWED_ORIGINS, CORS_ALLOWED_ORIGINS, SECRET, SERVER_LOC
 from storage.firestore_client import firestore_manager, firestore_read_counter
 from storage.local_trades_db import trades_db
@@ -199,6 +201,33 @@ async def debug_info():
     }
 
 
+@game_app.get("/internal/users_cache")
+async def internal_users_cache(secret: str = Query(...)):
+    """Full in-memory users cache on this game server (JSON-safe)."""
+    if secret != SECRET_KEY:
+        return JSONResponse(status_code=403, content={"error": "forbidden"})
+    data = export_users_cache(firestore_manager._users_cache)
+    return {"count": len(data), "users": data}
+
+
+@game_app.get("/internal/user_cache")
+async def internal_user_cache(
+    fid: str = Query(...),
+    secret: str = Query(...),
+):
+    """Single user row from this game server's in-memory users cache."""
+    if secret != SECRET_KEY:
+        return JSONResponse(status_code=403, content={"error": "forbidden"})
+    fid = str(fid).lower().strip()
+    user = export_single_user(firestore_manager._users_cache, fid)
+    if user is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "unknown_fid", "fid": fid},
+        )
+    return {"fid": fid, "user": user}
+
+
 @game_app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     origin = websocket.headers.get("origin")
@@ -262,6 +291,9 @@ async def _handle_ws_session(websocket: WebSocket):
             except Exception:
                 pass
             await websocket.close(code=1008)
+            if DEBUG:
+                with _stats_lock:
+                    _stats["active_ws_connections"] -= 1
             return
 
         try:
@@ -286,9 +318,18 @@ async def _handle_ws_session(websocket: WebSocket):
                         except Exception:
                             pass
                         await websocket.close(code=1008)
+                        if DEBUG:
+                            with _stats_lock:
+                                _stats["active_ws_connections"] -= 1
                         return
                 except ValueError:
                     pass
+
+            synced = await sync_game_cache_energy_from_main(
+                firestore_manager, MAIN_API_URL, SECRET_KEY, str(fid)
+            )
+            if DEBUG and not synced:
+                print(f"[DEBUG] energy sync from main FAILED (using local cache) fid={fid}")
 
             resp = await firestore_manager.reduce_energy(str(fid))
             if resp:
@@ -312,6 +353,9 @@ async def _handle_ws_session(websocket: WebSocket):
                 except Exception:
                     pass
                 await websocket.close(code=1008)
+                if DEBUG:
+                    with _stats_lock:
+                        _stats["active_ws_connections"] -= 1
                 return
             
             try:
@@ -332,13 +376,22 @@ async def _handle_ws_session(websocket: WebSocket):
             except Exception:
                 pass
             await websocket.close(code=1008)
+            if DEBUG:
+                with _stats_lock:
+                    _stats["active_ws_connections"] -= 1
             return
 
     except asyncio.TimeoutError:
         await websocket.close(code=1008)
+        if DEBUG:
+            with _stats_lock:
+                _stats["active_ws_connections"] -= 1
         return
     except json.JSONDecodeError:
         await websocket.close(code=1008)
+        if DEBUG:
+            with _stats_lock:
+                _stats["active_ws_connections"] -= 1
         return
     except WebSocketDisconnect:
         return
@@ -365,6 +418,9 @@ async def _handle_ws_session(websocket: WebSocket):
             try:
                 await websocket.send_json({"type": "session_timeout", "message": "Session expired"})
                 await websocket.close(code=1000, reason="Session timeout")
+                if DEBUG:
+                    with _stats_lock:
+                        _stats["active_ws_connections"] -= 1
             except Exception:
                 pass
         except asyncio.CancelledError:
@@ -449,7 +505,12 @@ async def _handle_ws_session(websocket: WebSocket):
                 if sending_task:
                     sending_task.cancel()
                     handle_wallet_task.cancel()
+                
+                    if DEBUG:
+                        with _stats_lock:
+                            _stats["ws_connections_active"] -= 1
                     await asyncio.sleep(0.01)
+                    
                     try:
                         await websocket.send_text("Streaming stopped.")
                     except Exception:
@@ -497,7 +558,11 @@ async def _handle_ws_session(websocket: WebSocket):
         pass
     except Exception as e:
         print(f"Error in WebSocket loop: {e}")
+
     finally:
+        if DEBUG:
+            with _stats_lock:
+                _stats["ws_connections_active"] -= 1
         if sending_task:
             sending_task.cancel()
         if handle_wallet_task:

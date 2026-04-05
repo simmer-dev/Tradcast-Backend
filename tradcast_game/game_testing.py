@@ -15,6 +15,7 @@ import asyncio
 from datetime import datetime, timezone
 from collections import deque
 from utils.auth_utils import decrypt
+from utils.main_server_energy import sync_game_cache_energy_from_main
 from configs.config import WS_ALLOWED_ORIGINS, CORS_ALLOWED_ORIGINS, SECRET
 from storage.firestore_client import firestore_manager, firestore_read_counter
 from storage.local_trades_db import trades_db
@@ -185,6 +186,10 @@ async def websocket_endpoint(websocket: WebSocket):
                         return
                 except ValueError:
                     pass
+
+            await sync_game_cache_energy_from_main(
+                firestore_manager, MAIN_API_URL, SECRET_KEY, str(fid)
+            )
 
             resp = await firestore_manager.reduce_energy(str(fid))
             if resp:
