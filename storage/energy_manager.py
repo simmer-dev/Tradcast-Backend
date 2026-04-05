@@ -19,13 +19,16 @@ class EnergyManager:
                 current_energy = user.get("energy", 0)
 
             if current_energy < self.max_energy:
-                new_energy = min(current_energy + self.energy_increment, self.max_energy)
                 if self.cache_only:
                     user = self.fm._users_cache.get(fid)
                     if user is not None:
-                        user["energy"] = new_energy
+                        user["energy"] = min(current_energy + 1, self.max_energy)
                 else:
-                    await self.fm.update_user(fid, {"energy": new_energy})
+                    from google.cloud import firestore as _fs
+                    self.fm._cache_apply(fid, {"energy": _fs.Increment(1)})
+                    await self.fm.db.collection(
+                        self.fm.users_collection
+                    ).document(fid).update({"energy": _fs.Increment(1)})
                 return True
 
             return False

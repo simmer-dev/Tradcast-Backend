@@ -12,7 +12,7 @@ from pathlib import Path
 from collections import defaultdict
 from threading import Lock
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.responses import Response as StarletteResponse
@@ -21,6 +21,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from routes.users import user_router
 from routes.sessions import session_router
 from configs.config import CORS_ALLOWED_ORIGINS, SECRET
+from utils.cache_export import export_single_user, export_users_cache
 from htmls import not_found_html
 from storage.firestore_client import firestore_manager, firestore_read_counter
 from storage.local_trades_db import trades_db
@@ -41,6 +42,8 @@ _stats = {
     "http_requests_by_path": defaultdict(int),
     "score_updates_received": 0,
     "score_updates_rejected": 0,
+    "energy_lookups_received": 0,
+    "energy_lookups_rejected": 0,
 }
 
 
@@ -128,6 +131,8 @@ async def debug_info():
             "http_requests_total": _stats["http_requests_total"],
             "score_updates_received": _stats["score_updates_received"],
             "score_updates_rejected": _stats["score_updates_rejected"],
+            "energy_lookups_received": _stats["energy_lookups_received"],
+            "energy_lookups_rejected": _stats["energy_lookups_rejected"],
         }
 
     return {
@@ -150,6 +155,8 @@ async def debug_info():
         "score_sync": {
             "updates_received": snapshot["score_updates_received"],
             "updates_rejected": snapshot["score_updates_rejected"],
+            "energy_lookups_received": snapshot["energy_lookups_received"],
+            "energy_lookups_rejected": snapshot["energy_lookups_rejected"],
         },
         "trades_db": {
             "rows": trades_db.count(),
@@ -177,36 +184,28 @@ async def internal_update_score(request: Request):
         return JSONResponse(status_code=403, content={"error": "forbidden"})
     fid = str(data["fid"]).lower().strip()
     profit = data["profit"]
+    final_pnl = data.get("final_pnl", 0.0)
     leaderboard_service.update_cache(fid, profit)
 
-    try:
-        doc = await firestore_manager.db.collection(
-            firestore_manager.users_collection
-        ).document(fid).get()
-        firestore_read_counter.inc("update_score_refresh")
-        if doc.exists:
-            firestore_manager._users_cache[fid] = doc.to_dict()
-            if DEBUG:
-                u = firestore_manager._users_cache[fid]
-                print(
-                    f"[DEBUG] cache refreshed from Firestore  fid={fid}  "
-                    f"total_profit={u.get('total_profit', '?')}  "
-                    f"energy={u.get('energy', '?')}  daily_games={u.get('daily_games', '?')}"
-                )
-        else:
-            if DEBUG:
-                print(f"[DEBUG] fid NOT in Firestore  fid={fid}")
-    except Exception as e:
-        print(f"[WARN] Firestore refresh failed for {fid}, applying deltas: {e}")
-        user = firestore_manager._users_cache.get(fid)
-        if user is not None:
-            user["total_profit"] = user.get("total_profit", 0) + profit
-            user["total_PnL"] = user.get("total_PnL", 0) + data.get("final_pnl", 0.0)
-            user["total_games"] = user.get("total_games", 0) + 1
-            user["energy"] = max(0, user.get("energy", 0) - 1)
-            user["daily_games"] = user.get("daily_games", 0) + 1
-
-    firestore_manager._lb_cache.clear()
+    user = firestore_manager._users_cache.get(fid)
+    if user is not None:
+        old_tp = user.get("total_profit", 0)
+        user["total_profit"] = old_tp + profit
+        user["total_PnL"] = user.get("total_PnL", 0) + final_pnl
+        user["total_games"] = user.get("total_games", 0) + 1
+        user["energy"] = max(0, user.get("energy", 0) - 1)
+        user["daily_games"] = user.get("daily_games", 0) + 1
+        user["last_online"] = datetime.now(timezone.utc)
+        firestore_manager._lb_cache.clear()
+        if DEBUG:
+            print(
+                f"[DEBUG] cache updated  fid={fid}  "
+                f"total_profit: {old_tp:.2f} -> {user['total_profit']:.2f}  "
+                f"energy={user.get('energy')}  daily_games={user.get('daily_games')}"
+            )
+    else:
+        if DEBUG:
+            print(f"[DEBUG] fid NOT in cache  fid={fid}  cache_size={len(firestore_manager._users_cache)}")
 
     session_id = data.get("session_id")
     if session_id:
@@ -229,6 +228,65 @@ async def internal_update_score(request: Request):
             f"leaderboard_cache={cache_size} users  trades_db={db_size} rows"
         )
     return {"status": "ok"}
+
+
+@app.get("/internal/user_energy")
+async def internal_user_energy(
+    fid: str = Query(...),
+    secret: str = Query(...),
+):
+    """Game servers: read energy from main's in-memory user cache (same source as the app)."""
+    if secret != SECRET:
+        if DEBUG:
+            with _stats_lock:
+                _stats["energy_lookups_rejected"] += 1
+            print(f"[DEBUG] energy lookup REJECTED (bad secret)")
+        return JSONResponse(status_code=403, content={"error": "forbidden"})
+    fid = str(fid).lower().strip()
+    if DEBUG:
+        with _stats_lock:
+            _stats["energy_lookups_received"] += 1
+    user = firestore_manager._users_cache.get(fid)
+    if user is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "unknown_fid", "energy": 0},
+        )
+    try:
+        energy = int(user.get("energy", 0) or 0)
+    except (TypeError, ValueError):
+        energy = 0
+    return {"fid": fid, "energy": energy}
+
+
+@app.get("/internal/users_cache")
+async def internal_users_cache(secret: str = Query(...)):
+    """Full in-memory users cache (JSON-safe). Large response — use sparingly."""
+    if secret != SECRET:
+        return JSONResponse(status_code=403, content={"error": "forbidden"})
+    data = export_users_cache(firestore_manager._users_cache)
+    return {
+        "count": len(data),
+        "users": data,
+    }
+
+
+@app.get("/internal/user_cache")
+async def internal_user_cache(
+    fid: str = Query(...),
+    secret: str = Query(...),
+):
+    """Single user document from main's in-memory users cache."""
+    if secret != SECRET:
+        return JSONResponse(status_code=403, content={"error": "forbidden"})
+    fid = str(fid).lower().strip()
+    user = export_single_user(firestore_manager._users_cache, fid)
+    if user is None:
+        return JSONResponse(
+            status_code=404,
+            content={"error": "unknown_fid", "fid": fid},
+        )
+    return {"fid": fid, "user": user}
 
 
 # ====================== Gameplay Tracker ======================
