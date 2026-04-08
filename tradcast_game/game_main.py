@@ -26,6 +26,7 @@ import requests
 import threading
 
 energy_manager = EnergyManager(firestore_manager, cache_only=True)
+firestore_manager.cache_only = True
 
 DEBUG = True
 

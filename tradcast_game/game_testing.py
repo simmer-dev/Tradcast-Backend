@@ -18,6 +18,7 @@ from utils.auth_utils import decrypt
 from utils.main_server_energy import sync_game_cache_energy_from_main
 from configs.config import WS_ALLOWED_ORIGINS, CORS_ALLOWED_ORIGINS, SECRET
 from storage.firestore_client import firestore_manager, firestore_read_counter
+firestore_manager.cache_only = True
 from storage.local_trades_db import trades_db
 from storage.energy_manager import EnergyManager
 import requests

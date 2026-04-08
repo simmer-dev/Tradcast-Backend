@@ -227,6 +227,7 @@ class FirestoreManager:
         self._keep_alive_started = False
         self._lb_cache = _TTLCache()
         self._users_cache: Dict[str, Dict[str, Any]] = {}
+        self.cache_only = False
 
     # ── cache helpers ──────────────────────────────────────────────
 
@@ -429,9 +430,10 @@ class FirestoreManager:
                 return False
 
             user["energy"] = energy - 1
-            await self.db.collection(self.users_collection).document(fid).update(
-                {"energy": firestore.Increment(-1)}
-            )
+            if not self.cache_only:
+                await self.db.collection(self.users_collection).document(fid).update(
+                    {"energy": firestore.Increment(-1)}
+                )
             return True
 
         except Exception as e:
