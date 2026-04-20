@@ -1,8 +1,8 @@
 """
-FastAPI endpoints for prize-winner operations.
+FastAPI endpoints for prize-winner service.
 
 Run:
-  uvicorn scripts.prize_winners_api:app --reload --port 8010
+  uvicorn code_winners:app --reload --port 8010
 """
 
 from __future__ import annotations
