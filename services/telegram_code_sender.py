@@ -6,6 +6,8 @@ import string
 import requests
 from datetime import datetime, date, time, timedelta
 from telegram import Bot
+from configs.config import TELEGRAM_TOKEN, TELEGRAM_CHANNEL_ID, APP_BASE_URL, ROUND_SECRET
+
 
 APP_BASE_URL = '' #"https://tradcast.xyz"
 ROUND_SECRET = ''
@@ -66,7 +68,7 @@ def pick_random_time_for_day(target_day: date) -> datetime:
 
 
 async def run_daily_random_round():
-    bot = Bot(token=TELEGRAM_BOT_TOKEN)
+    bot = Bot(token=TELEGRAM_TOKEN)
     state = load_state()
     while True:
         today = date.today()
@@ -79,20 +81,24 @@ async def run_daily_random_round():
         target_dt = pick_random_time_for_day(target_day)
         now = datetime.now()
         # if selected time already passed today, move to tomorrow
+
         if target_dt <= now:
             target_dt = pick_random_time_for_day(today + timedelta(days=1))
+
         sleep_seconds = (target_dt - now).total_seconds()
         print(f"[scheduler] Next round at {target_dt.isoformat()} (in {int(sleep_seconds)}s)")
         await asyncio.sleep(max(1, int(sleep_seconds)))
         # re-check guard to avoid duplicate if state changed
         current_date_str = date.today().isoformat()
         state = load_state()
+
         if state.get("last_run_date") == current_date_str:
             continue
+
         code = generate_code(6)
         data = await asyncio.to_thread(trigger_round, code)
         await bot.send_message(
-            chat_id=TELEGRAM_CHAT_ID,
+            chat_id=TELEGRAM_CHANNEL_ID,
             text=(
                 "🔥 New Tradcast code is live!\n"
                 f"Code: {code}\n"
@@ -106,3 +112,4 @@ async def run_daily_random_round():
 
 if __name__ == "__main__":
     asyncio.run(run_daily_random_round())
+
