@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 
 use_env_working_dir = False
-working_dir = "/root/tradcast_backend/game"
+working_dir = "/root/tradcast_backend" # backend root path
 ENV_WORKING_DIR_KEY = "WORKING_DIR"
 
 # Decide working dir
@@ -13,6 +13,7 @@ BASE_DIR = (
     else working_dir
 )
 
+BASE_DIR += '/game'
 # Load .env from game directory
 dotenv_path = os.path.join(BASE_DIR, ".env")
 load_dotenv(dotenv_path)
@@ -20,6 +21,11 @@ load_dotenv(dotenv_path)
 SERVER_LOC = 'Turkey'
 # Read secret
 SECRET = os.getenv("SECRET")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHANNEL_ID = os.getenv("TELEGRAM_CHANNEL_ID")
+APP_BASE_URL = os.getenv("APP_BASE_URL")
+
+
 if not SECRET:
     print("WARNING: SECRET not set in environment")
 
@@ -61,8 +67,6 @@ WS_ALLOWED_ORIGINS = {
     "http://localhost:5009",
     "http://127.0.0.1:5009",
     'https://ws.simmerliq.com',
-    "https://demoapp.prime-academy.online",
-   'https://tradcastdev.prime-academy.online',
    'https://tradcast.simmerliq.com',
     'https://api.tradcast.xyz',
       'https://tradcast.xyz',
@@ -71,7 +75,6 @@ WS_ALLOWED_ORIGINS = {
 
 # ✅ Allowed origins for HTTP
 CORS_ALLOWED_ORIGINS = [
-    'https://tradcastdev.prime-academy.online',
     "https://dev.simmerliq.com",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
@@ -84,11 +87,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5009",
     "http://127.0.0.1:5009",
     "localhost:5009",
-    "demoapp.prime-academy.online",
-    'tradcastdev.prime-academy.online',
     'tradcast.simmerliq.com',
     'ws.simmerliq.com',
     'api.tradcast.xyz',
     'tradcast.xyz'
     ]
-
