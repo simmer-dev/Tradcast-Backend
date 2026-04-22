@@ -1,0 +1,56 @@
+name: Game Code Checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tradcast_game/**"
+      - "storage/**"
+      - "utils/**"
+      - "configs/**"
+      - "game/**"
+      - ".github/workflows/game-code-checks.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "tradcast_game/**"
+      - "storage/**"
+      - "utils/**"
+      - "configs/**"
+      - "game/**"
+      - ".github/workflows/game-code-checks.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-compile-game:
+    name: Lint and Compile (game service)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
+      FIRESTORE_EMULATOR_HOST: "127.0.0.1:9999"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install lint dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff
+
+      - name: Ruff check (game + shared code)
+        run: |
+          ruff check tradcast_game storage utils configs game
+
+      - name: Compile Python files (syntax check)
+        run: |
+          python -m compileall -q tradcast_game storage utils configs game
