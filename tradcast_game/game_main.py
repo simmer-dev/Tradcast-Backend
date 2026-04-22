@@ -18,7 +18,7 @@ from threading import Lock
 from utils.auth_utils import decrypt
 from utils.main_server_energy import sync_game_cache_energy_from_main
 from utils.cache_export import export_single_user, export_users_cache
-from configs.config import WS_ALLOWED_ORIGINS, CORS_ALLOWED_ORIGINS, SECRET, SERVER_LOC
+from configs.config import WS_ALLOWED_ORIGINS, CORS_ALLOWED_ORIGINS, SECRET, SERVER_LOC, APP_BASE_URL
 from storage.firestore_client import firestore_manager, firestore_read_counter
 from storage.local_trades_db import trades_db
 from storage.energy_manager import EnergyManager
@@ -30,7 +30,7 @@ firestore_manager.cache_only = True
 
 DEBUG = True
 
-MAIN_API_URL = os.getenv("MAIN_API_URL", "http://localhost:6001")
+MAIN_API_URL = os.getenv("MAIN_API_URL", APP_BASE_URL)
 SECRET_KEY = SECRET
 
 game_app = FastAPI()
